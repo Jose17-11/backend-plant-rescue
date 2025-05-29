@@ -1,47 +1,68 @@
-import express from 'express';
-import multer from 'multer';
+// backend/index.js
+import express from "express";
+import multer from "multer";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+// Necesario para que __dirname funcione con ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
 const app = express();
-const upload = multer();
-
-let latestFrame = null;
-
-app.post('/api/stream', upload.single('frame'), (req, res) => {
-  try {
-    if (!req.file) {
-      console.error('No se recibió archivo en el request');
-      return res.status(400).send('No file uploaded');
-    }
-
-    console.log(`Frame recibido - Tamaño: ${req.file.size} bytes`);
-    latestFrame = req.file.buffer;
-    res.status(200).send('Frame recibido');
-    
-  } catch (error) {
-    console.error('Error en POST /api/stream:', error);
-    res.status(500).send(`Server error: ${error.message}`);
-  }
-});
-
-app.get('/api/stream', (req, res) => {
-  try {
-    if (!latestFrame) {
-      console.log('Solicitud GET pero no hay frames aún');
-      return res.status(404).send('No frames available');
-    }
-
-    console.log(`Enviando frame - Tamaño: ${latestFrame.length} bytes`);
-    res.setHeader('Content-Type', 'image/jpeg');
-    res.send(latestFrame);
-    
-  } catch (error) {
-    console.error('Error en GET /api/stream:', error);
-    res.status(500).send(`Server error: ${error.message}`);
-  }
-});
-
-// Importante: Escuchar en todas las interfaces de red
 const PORT = 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Accesible en la red local como: http://[TU_IP_LOCAL]:${PORT}`);
+
+// Crear carpeta 'frames' si no existe
+const framesDir = path.join(__dirname, "frames");
+if (!fs.existsSync(framesDir)) {
+  fs.mkdirSync(framesDir);
+}
+
+// Configurar Multer para guardar en memoria
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+// Ruta para recibir frame
+app.post("/video", express.raw({ type: "image/jpeg", limit: "2mb" }), (req, res) => {
+  const imageBuffer = req.body;
+  if (!imageBuffer || !imageBuffer.length) {
+    return res.status(400).send("No se recibió imagen");
+  }
+
+  const filename = `frame_${Date.now()}.jpg`;
+  const filePath = path.join(framesDir, filename);
+  fs.writeFileSync(filePath, imageBuffer);
+  console.log("📷 Frame recibido y guardado:", filename);
+
+  // Limitar a 15 imágenes
+  const files = fs.readdirSync(framesDir).filter(f => f.endsWith(".jpg"));
+  if (files.length > 15) {
+    const sorted = files.sort(); // orden cronológico por nombre
+    const toDelete = sorted.slice(0, files.length - 15); // las más viejas
+
+    toDelete.forEach(file => {
+      fs.unlinkSync(path.join(framesDir, file));
+      console.log("🗑️ Imagen eliminada:", file);
+    });
+  }
+
+  res.status(200).send("Frame recibido");
+});
+
+
+
+// Ruta para obtener el último frame guardado
+app.get("/latest-frame", (req, res) => {
+  const files = fs.readdirSync(framesDir).filter(f => f.endsWith(".jpg"));
+  if (!files.length) return res.status(404).send("No hay frames");
+
+  const latestFile = files.sort().reverse()[0];
+  const filePath = path.join(framesDir, latestFile);
+  res.sendFile(filePath);
+});
+
+// Iniciar servidor
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor backend en http://localhost:${PORT}`);
 });
