@@ -19,6 +19,13 @@ if (!fs.existsSync(framesDir)) {
   fs.mkdirSync(framesDir);
 }
 
+// Middleware para loggear todas las peticiones entrantes
+app.use((req, res, next) => {
+  console.log(`📥 [${new Date().toISOString()}] ${req.method} ${req.url}`);
+  console.log("Headers:", req.headers);
+  next();
+});
+
 // Configurar Multer para guardar en memoria
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
@@ -27,30 +34,39 @@ const upload = multer({ storage });
 app.post("/video", express.raw({ type: "image/jpeg", limit: "2mb" }), (req, res) => {
   const imageBuffer = req.body;
   if (!imageBuffer || !imageBuffer.length) {
+    console.error("❌ No se recibió imagen o está vacía");
     return res.status(400).send("No se recibió imagen");
   }
 
   const filename = `frame_${Date.now()}.jpg`;
   const filePath = path.join(framesDir, filename);
-  fs.writeFileSync(filePath, imageBuffer);
-  console.log("📷 Frame recibido y guardado:", filename);
+
+  try {
+    fs.writeFileSync(filePath, imageBuffer);
+    console.log("📷 Frame recibido y guardado:", filename);
+  } catch (err) {
+    console.error("❌ Error guardando frame:", err);
+    return res.status(500).send("Error guardando imagen");
+  }
 
   // Limitar a 15 imágenes
-  const files = fs.readdirSync(framesDir).filter(f => f.endsWith(".jpg"));
-  if (files.length > 15) {
-    const sorted = files.sort(); // orden cronológico por nombre
-    const toDelete = sorted.slice(0, files.length - 15); // las más viejas
+  try {
+    const files = fs.readdirSync(framesDir).filter(f => f.endsWith(".jpg"));
+    if (files.length > 15) {
+      const sorted = files.sort(); // orden cronológico por nombre
+      const toDelete = sorted.slice(0, files.length - 15); // las más viejas
 
-    toDelete.forEach(file => {
-      fs.unlinkSync(path.join(framesDir, file));
-      console.log("🗑️ Imagen eliminada:", file);
-    });
+      toDelete.forEach(file => {
+        fs.unlinkSync(path.join(framesDir, file));
+        console.log("🗑️ Imagen eliminada:", file);
+      });
+    }
+  } catch (err) {
+    console.error("❌ Error limpiando imágenes:", err);
   }
 
   res.status(200).send("Frame recibido");
 });
-
-
 
 // Ruta para obtener el último frame guardado
 app.get("/latest-frame", (req, res) => {
