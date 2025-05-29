@@ -5,7 +5,7 @@ services:
     build: .
     container_name: esp32-backend
     ports:
-      - "3000:3000"
+      - "3340:3340"
     volumes:
       - ./src/frames:/app/src/frames
     restart: always

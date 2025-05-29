@@ -15,7 +15,7 @@ COPY . .
 RUN mkdir -p src/frames
 
 # Expone el puerto
-EXPOSE 3000
+EXPOSE 3340
 
 # Comando para iniciar
 CMD ["node", "src/index.js"]
